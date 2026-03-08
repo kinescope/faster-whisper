@@ -342,10 +342,10 @@ class BatchedInferencePipeline(Pipeline):
             )
         else:
             if task is not None:
-                self.tokenizer.task = self.tokenizer.token_to_id(f"<|{task}|>")
+                self.tokenizer.task = self.tokenizer.tokenizer.token_to_id(f"<|{task}|>")
 
             if language is not None:
-                self.tokenizer.language = self.tokenizer.token_to_id(f"<|{language}|>")
+                self.tokenizer.language = self.tokenizer.tokenizer.token_to_id(f"<|{language}|>")
                 self.tokenizer.language_code = language
 
         return language, language_probability, task
@@ -580,55 +580,55 @@ class BatchedInferencePipeline(Pipeline):
             without_timestamps=without_timestamps,
             max_initial_timestamp=0.0,
         )
-        seg_idx = 0
-        for idx, out in enumerate(
-            self.__call__(
-                self.audio_split(audio, vad_segments, sampling_rate),
-                batch_size=batch_size,
-                options=batched_options,
-            )
-        ):
-            if log_progress:
-                percent_complete = ((idx + 1) / total_segments) * 100
-                self.model.logger.info(f"Progress: {percent_complete:.2f}%...")
-
-            responses = out["output"]
-            if batch_size == 1:
-                responses = responses[0]
-
-            info = TranscriptionInfo(
-                language=language,
-                language_probability=language_probability,
-                duration=duration,
-                duration_after_vad=None,
-                transcription_options=batched_options,
-                vad_options=None,
-                all_language_probs=None,
-            )
-            for response in responses:
-                seg_idx += 1
-                segments = Segment(
-                    seek=int(responses[-1]["end"] * self.model.frames_per_second),
-                    id=seg_idx,
-                    text=response["text"],
-                    start=round(response["start"], 3),
-                    end=round(response["end"], 3),
-                    words=(
-                        None
-                        if not batched_options.word_timestamps
-                        else response["words"]
-                    ),
-                    tokens=response["tokens"],
-                    avg_logprob=response["avg_logprob"],
-                    no_speech_prob=response["no_speech_prob"],
-                    compression_ratio=response["compression_ratio"],
+        try:
+            seg_idx = 0
+            for idx, out in enumerate(
+                self.__call__(
+                    self.audio_split(audio, vad_segments, sampling_rate),
+                    batch_size=batch_size,
+                    options=batched_options,
                 )
-                yield segments, info
+            ):
+                if log_progress:
+                    percent_complete = ((idx + 1) / total_segments) * 100
+                    self.model.logger.info(f"Progress: {percent_complete:.2f}%...")
 
-        # revert the tokenizer if multilingual inference is enabled
-        if self.preset_language is None:
-            self.tokenizer = None
-        self.last_speech_timestamp = 0.0
+                responses = out["output"]
+                if batch_size == 1:
+                    responses = responses[0]
+
+                info = TranscriptionInfo(
+                    language=language,
+                    language_probability=language_probability,
+                    duration=duration,
+                    duration_after_vad=None,
+                    transcription_options=batched_options,
+                    vad_options=None,
+                    all_language_probs=None,
+                )
+                for response in responses:
+                    seg_idx += 1
+                    segments = Segment(
+                        seek=int(responses[-1]["end"] * self.model.frames_per_second),
+                        id=seg_idx,
+                        text=response["text"],
+                        start=round(response["start"], 3),
+                        end=round(response["end"], 3),
+                        words=(
+                            None
+                            if not batched_options.word_timestamps
+                            else response["words"]
+                        ),
+                        tokens=response["tokens"],
+                        avg_logprob=response["avg_logprob"],
+                        no_speech_prob=response["no_speech_prob"],
+                        compression_ratio=response["compression_ratio"],
+                    )
+                    yield segments, info
+        finally:
+            if self.preset_language is None:
+                self.tokenizer = None
+            self.last_speech_timestamp = 0.0
 
     def detect_language(self, audio: torch.Tensor):
         to_cpu = (
@@ -1267,8 +1267,8 @@ class WhisperModel:
                     task = "transcribe"
 
                 # Update tokenizer based on task and language
-                tokenizer.task = tokenizer.token_to_id(f"<|{task}|>")
-                tokenizer.language = tokenizer.token_to_id(language_token)
+                tokenizer.task = tokenizer.tokenizer.token_to_id(f"<|{task}|>")
+                tokenizer.language = tokenizer.tokenizer.token_to_id(language_token)
                 tokenizer.language_code = language
             # Update prompt based on task and language
             prompt = self.get_prompt(
